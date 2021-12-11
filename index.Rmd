@@ -46,93 +46,226 @@ class_diag <- function(score, truth, positive, cutoff=.5){
 
 # Mining, Classification, Prediction
 
-## Name and EID here
+## Aakash Reddy // AVR683
 
 ### Introduction 
 
-Paragraph or two introducing your datasets and variables, why they are interesting to you, etc. See instructions for more information
+These two datasets separately identify the air quality and mortality rates for 43 Metropolitan Statistical Areas (MSA). This relationship is important to study for those interested in public health research, particularly after increasing restrictions on the Environmental Protection Agency. In this dataset, the variables defining air quality are NOX (Nitrous Oxide Pollution Potential), and SOX (sulphur dioxide pollution potential), POPN (MSA Population),  MORT(mortality rates per 100,000 people), and Danger, which is defined by EPA standards for combined pollution potential to indicate if the pollution levels are dangerous for human health. This data was acquired from the Rutgers library at the address https://rucore.libraries.rutgers.edu/rutgers-lib/30861/. Overall, I expect to find an association between pollution potentials and greater mortality rate.
 
 ```{R}
 library(tidyverse)
-# read your datasets in here, e.g., with read_csv()
-
-# if your dataset needs tidying, do so here
-
-# any other code here
+library(readr)
+Fullset_Real_AirQ <- read_csv("Fullset_Real_AirQ.csv")
+read_csv("Fullset_Real_AirQ.csv")
 ```
 
 ### Cluster Analysis
 
 ```{R}
+
+#check for k
 library(cluster)
-# clustering code here
+pam_dat<-Fullset_Real_AirQ%>%select(NOX,SOX,POPN, MORT)
+sil_width<-vector() 
+for(i in 2:10){  
+  kms <- kmeans(pam_dat,centers=i) 
+  sil <- silhouette(kms$cluster,dist(pam_dat)) 
+  sil_width[i]<-mean(sil[,3]) 
+}
+ggplot()+geom_line(aes(x=1:10,y=sil_width))+scale_x_continuous(name="k",breaks=1:10)
+
+#clustering
+library(cluster) 
+set.seed(322) 
+pam1 <- pam_dat %>% pam(k=2) 
+pam1
+
+#example clustering plot
+pamclust<-pam_dat %>% mutate(cluster=as.factor(pam1$clustering))
+pamclust %>% ggplot(aes(NOX, SOX,color=cluster)) + geom_point()
+
+#summarizing each cluster
+pamclust %>% group_by(cluster) %>% summarize_if(is.numeric,mean,na.rm=T)
+
+#check final medoids
+pam_dat%>%slice(pam1$id.med)
+
+library(GGally)
+ggpairs(pamclust, aes(color=cluster))
+
+#goodness of fit
+pam1$silinfo$avg.width
+plot(pam1,which=2)
+sil_width<-vector()
+for(i in 2:10){  
+  pam_fit <- pam(pam_dat, k = i)  
+  sil_width[i] <- pam_fit$silinfo$avg.width  
+}
+ggplot()+geom_line(aes(x=1:10,y=sil_width))+scale_x_continuous(name="k",breaks=1:10)
+plot(pam1,which=2)
+
+
 ```
 
-Discussion of clustering here
-    
-    
+Discussion of clustering here ---
+In doing the 7 steps for clustering analysis (1. Process data (usually, scale your numeric variables), 2. Choose number of clusters   (largest avg silhouette width), 3. Use numerics (euclidean), 4. Run cluster analysis (PAM is better), 5. Visualize clusters, 6. Interpret clusters, 7. Discuss goodness-of-fit), we begin by processing the data. Since the data does not need to be processed the number of clusters can then be chosen. 
+    On the basis of largest silhouette width, a two cluster solution would be best. PAM clustering is then performed to form two major clusters. We can then do the third, fourth, and fifth steps to run and visualize the clusters.
+    In the example plot only displaying two variables (NOX and SOX) the first cluster  is displayed in red and tends towards a lower pollution potentials whereas the second cluster in light blue tends towards higher SOX and NOX pollution potentials. In terms of general interpretation of each cluster, the ggpairs visualization suggests that the first cluster (red) tends towards lower NOX and SOX pollution potentials and is associated with lower mortality rates as well. Similarly, the second cluster with higher NOX and SOX pollution potentials tending towards higher mortality rates suggests there may be an association between higher pollution and death rates. However, there are a number of outliers and extraneous information such as in the cluster boxplots which may weaken the certainty of the results. In the final step, The goodness of fit can be informed by the silhouette width, which is found to be 0.4930449. Since this is within the boundary of .26-.50, this structure is weak and could be artificial. 
+
+
 ### Dimensionality Reduction with PCA
 
 ```{R}
-# PCA code here
+#scaling and performing pca
+AirQ1<- Fullset_Real_AirQ %>% select(NOX,SOX,POPN, MORT)
+AirQ_nums<-AirQ1 %>% select_if(is.numeric) %>% scale
+rownames(AirQ_nums)<-AirQ1$Name
+AirQ_pca<-princomp(AirQ_nums)
+names(AirQ_pca)
+summary(AirQ_pca, loadings=T)
+
+#choosing PCs to keep
+eigval<-AirQ_pca$sdev^2 
+varprop=round(eigval/sum(eigval), 2) 
+round(cumsum(eigval)/sum(eigval), 2)
+
+#interpret
+summary(AirQ_pca, loadings=T)
+#visualize
+library("devtools")
+library("factoextra")
+fviz_pca_biplot(AirQ_pca) +
+  labs(title ="PCA", x = "PC1", y = "PC2")
+
+
+
 ```
 
 Discussions of PCA here. 
 
+In doing the 5 steps of PCA 
+Prepare the data, 2. Perform PCA, 3. Choose PCs to keep, 4. Compute/grab PC scores, and 5. Visualize and interpret PCs, we first start by normalizing the data for PC analysis by centering and scaling it. Then, the PCA is performed. In determining which PCs to keep, a those with cumulative variance under 0.80 should be kept. Therefore, the first two PCs are retained. In performing step 4 and 5, the results are summarized revealing PC1 to be a general pollution axis since all loadings have a similar signs and magnitude. Higher scores in PC1 mean higher pollution potentials, population, and mortality rates. PC2 is a pollution vs population health axis where higher PC2 scores tend towards greater pollution potentials and lower populations and mortality rates and vice versa. 
+  The observations are then visualized using a fviz_pca_biplot to identify each PC1 relative to its variable position. This graph suggests that increase in PC1 increases NOX and SOX while decreasing POPN and MORT and vice versa. Similarly, it also suggests the same theme for PC2 as indicated above in the general pollution axis. In addition, the first two PCs explain 77% of the total variance in the dataset. 
+
 ###  Linear Classifier
 
 ```{R}
-# linear classifier code here
+class_dat <- Fullset_Real_AirQ %>% select(DNGR, NOX:MORT)
+glimpse(class_dat) 
+glm(DNGR ~ . , data=class_dat, family="binomial") 
+
+#predictions and confusion matrix
+fit <- glm(DNGR ~ . , data=class_dat, family="binomial")
+probs <- predict(fit, type="response")
+class_diag(probs, class_dat$DNGR, positive="1") 
+table(truth = class_dat$DNGR, predictions = probs>.5) %>% addmargins
 ```
 
 ```{R}
-# cross-validation of linear classifier here
+set.seed(1234)
+k=5 #choose number of folds
+data<-class_dat[sample(nrow(class_dat)),] #randomly order rows
+folds<-cut(seq(1:nrow(class_dat)),breaks=k,labels=F) #create folds
+diags<-NULL
+for(i in 1:k){
+  train<-data[folds!=i,] 
+  test<-data[folds==i,]
+  truth<-test$DNGR
+  fit<-glm(DNGR~.,data=train,family="binomial")
+  probs<-predict(fit,newdata = test,type="response")
+  diags<-rbind(diags,class_diag(probs,truth, positive=1))
+}
+summarize_all(diags,mean)
 ```
 
-Discussion here
+
+
+Using a linear regression classifier, a the binary variable DNGR (represents whether EPA standards dictate the pollution levels in each megacity would be considered dangerous) was predicted from the rest of the numeric variables in the dataset. The model was trained to the dataset and used for predictions for all observations. In running the class_diag function, each component including accuracy and specificty was found to be exactly 1. This suggests the prediction was very accurate and the true negative and positive rates match the predicted negative and positive rates. Since AUC is an overall measure of prediction potential, the AUC value of 1 indicates that this is a perfect prediction.
+  This conclusion is supported by the confusion matrix where where are no false positive or false negatives as all are correctly matched to their expected values on the 0/1 binary. 
+  In performing a K-Fold CV on this model and running the class-diag function, the model predicts with very high accuracy at 0.95, sensitivity (TNR) at 0.93, and specificity(TPR) at 0.97. Since the AUC quantifies overall prediction potential, the AUC value of .98 suggests this is a strong prediction and is a model that will generalize well to new datasets. However, since the model was less perfect in cross-validation as per the drop in AUC, this is a sign of overfitting being present.
+    
 
 ### Non-Parametric Classifier
 
 ```{R}
 library(caret)
-# non-parametric classifier code here
+fit <- knn3(DNGR ~ . , data=class_dat)
+probs <- predict(fit, newdata=class_dat)[,2]
+class_diag(probs, class_dat$DNGR, positive="1") 
+table(truth = class_dat$DNGR, predictions = probs>.5) %>% addmargins
 ```
 
 ```{R}
-# cross-validation of np classifier here
+set.seed(1234)
+k=5 #choose number of folds
+data<-class_dat[sample(nrow(class_dat)),] #randomly order rows
+folds<-cut(seq(1:nrow(class_dat)),breaks=k,labels=F) #create folds
+diags<-NULL
+for(i in 1:k){
+  train<-data[folds!=i,] 
+  test<-data[folds==i,]
+  truth<-test$DNGR
+  fit<-glm(DNGR~.,data=train,family="binomial")
+  probs<-predict(fit,newdata = test,type="response")
+  diags<-rbind(diags,class_diag(probs,truth, positive=1))
+}
+summarize_all(diags,mean)
 ```
 
-Discussion
+Using a non-parametric classifier, the binary variable DNGR (represents whether EPA standards dictate the pollution levels in each megacity would be considered dangerous) was predicted from the rest of the numeric variables in the dataset. The model was trained to the dataset and used for predictions for all observations. In running the class_diag function, the results suggest high accuracy, sensitivity, and specificity at 0.95,	0.9, and	0.97 respectively. As a result, the AUC of .99 suggests the model has strong prediction potential and is a very strong classifier. This suggests the prediction was very accurate and the true negative and positive rates closely match the predicted negative and positive rates.
+  This conclusion is supported by the confusion matrix where where is only 1 false positive and false negative, whereas the rest are correctly matched to their expected values on the 0/1 binary. 
+  In performing a K-Fold CV on this model and running the class-diag function, the model predicts with very high accuracy at 0.95, sensitivity (TNR) at 0.93, and specificity(TPR) at 0.97. Since the AUC quantifies overall prediction potential, the AUC value of .98 suggests this is a strong prediction and is a model that will generalize well to new datasets. Despite the very slight drop in AUC, the values are comparable and suggest very little to no overfitting is present.
 
 
 ### Regression/Numeric Prediction
 
 ```{R}
-# regression model code here
+class_dat2 <- class_dat%>%select(NOX:MORT)
+fit<-lm(MORT~.,data=class_dat2)  #predict mortality rate from other variables
+yhat<-predict(fit)
+
+mean((class_dat2$MORT-yhat)^2) #mean squared error (MSE)
 ```
 
 ```{R}
-# cross-validation of regression model here
+# cross-validation of regression model 
+set.seed(1234)
+k=5 
+data<-class_dat2[sample(nrow(class_dat2)),] 
+folds<-cut(seq(1:nrow(class_dat2)),breaks=k,labels=F)
+diags<-NULL
+for(i in 1:k){
+  train<-data[folds!=i,]
+  test<-data[folds==i,]
+  fit<-lm(MORT~.,data=train)
+  yhat<-predict(fit,newdata=test)
+  diags<-mean((test$MORT-yhat)^2) 
+}
+mean(diags)
 ```
 
-Discussion
+In doing a linear regression model of mortality rates from the other numeric variables (NOX, SOX, and POPN), the MSE or prediction error for the regression is 2456.765. In performing a k-fold CV on the model, the average MSE across the k testing folds was found to be 1418.275. Since the mean squared error is lower in the cross-validation, this suggests overfitting is not a significant factor and/or is not present in this model. 
 
 ### Python 
 
 ```{R}
 library(reticulate)
+use_python("/usr/bin/python3", required = F)
+Increasing<-"Pollution"
+cat(c(Increasing,py$Increasing))
+
 ```
 
 ```{python}
-# python code here
+Increasing="Potentials"
+print(r.Increasing,Increasing)
+
 ```
 
-Discussion
+I transferred the word pollution to python, then transferred the word potentials from r, to form the word pollution potentials referring to the increasing amounts per datavalue in the original dataset by megacity. 
 
 ### Concluding Remarks
 
-Include concluding remarks here, if any
-
-
+According to the results, higher pollution potentials are associated with greater mortality rates. Therefore, greater care should be taken in the future to address rising pollution rates in metropolitan areas.
 
 
